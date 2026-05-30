@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -152,40 +152,12 @@ function DashboardInner() {
         </div>
 
         <div className="space-y-6">
-          {/* Pending approvals */}
-          <div className="glass rounded-2xl">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <div className="font-semibold">Pending Approvals</div>
-              <a href="/approvals" className="text-xs text-primary hover:underline">View all</a>
-            </div>
-            <div className="p-3 max-h-80 overflow-auto">
-              {pending.isLoading && <div className="text-sm text-muted-foreground p-3">Loading…</div>}
-              {pending.isError && <div className="text-sm text-destructive p-3">{(pending.error as Error).message}</div>}
-              {!pending.isLoading && !pending.isError && pendingCount === 0 && (
-                <div className="text-sm text-muted-foreground p-3">Nothing waiting on you.</div>
-              )}
-              {pending.data?.slice(0, 6).map((row, i) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const r: any = row;
-                return (
-                  <div key={i} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent/40">
-                    <div className="size-9 rounded-lg bg-primary/15 grid place-items-center text-primary text-sm">
-                      {String(r.category ?? "?").slice(0, 1).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{r.note || r.category || "Expense"}</div>
-                      <div className="text-xs text-muted-foreground truncate">{r.group_name ?? r.group_id ?? ""}</div>
-                    </div>
-                    <div className="text-sm font-semibold">{fmtINR(Number(r.amount ?? 0))}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Groups */}
           <div className="glass rounded-2xl">
-            <div className="px-5 py-4 border-b border-border font-semibold">Your Groups</div>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <div className="font-semibold">Your Groups</div>
+              <Link to="/groups" className="text-xs text-primary hover:underline">View All</Link>
+            </div>
             <div className="p-3 max-h-80 overflow-auto">
               {groups.isLoading && <div className="text-sm text-muted-foreground p-3">Loading…</div>}
               {groups.isError && <div className="text-sm text-destructive p-3">{(groups.error as Error).message}</div>}
