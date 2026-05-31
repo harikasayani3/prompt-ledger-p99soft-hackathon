@@ -27,7 +27,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const loc = useLocation();
   const [user, setUser] = useState<LocalUser | null>(null);
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(() => {
+    // Persist theme across navigation and page reloads
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("theme");
+      if (saved) return saved === "dark";
+    }
+    return true; // default dark
+  });
   const [budgetLimit, setBudgetLimit]   = useState(0);
   const [budgetSalary, setBudgetSalary] = useState(0);
 
@@ -55,6 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle("light", !dark);
     document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("theme", dark ? "dark" : "light");
   }, [dark]);
 
   const callTool = useServerFn(mcpCall);
