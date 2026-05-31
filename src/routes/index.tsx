@@ -216,18 +216,40 @@ function SpendingOverview({ byCategory, total, loading, error }: {
   loading: boolean;
   error?: string;
 }) {
+  const [hovered, setHovered] = useState<{ cat: string; value: number; pct: string } | null>(null);
+
   const entries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const sum = entries.reduce((s, [, v]) => s + v, 0) || 1;
+
+  // Build SVG arc segments
+  const R = 70, ir = 50, cx = 80, cy = 80;
+  function pt(deg: number, r: number) {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+  }
+  function arcPath(startDeg: number, endDeg: number) {
+    const gap = 2;
+    const s = startDeg + gap / 2;
+    const e = endDeg - gap / 2;
+    if (e - s <= 0) return "";
+    const lg = e - s > 180 ? 1 : 0;
+    const [x1, y1] = pt(s, R); const [x2, y2] = pt(e, R);
+    const [x3, y3] = pt(e, ir); const [x4, y4] = pt(s, ir);
+    return `M ${x1} ${y1} A ${R} ${R} 0 ${lg} 1 ${x2} ${y2} L ${x3} ${y3} A ${ir} ${ir} 0 ${lg} 0 ${x4} ${y4} Z`;
+  }
+
   let acc = 0;
-  const stops = entries.map(([, v], i) => {
-    const start = (acc / sum) * 100;
+  const segments = entries.map(([cat, v], i) => {
+    const start = (acc / sum) * 360;
     acc += v;
-    const end = (acc / sum) * 100;
-    return `${PIE_COLORS[i % PIE_COLORS.length]} ${start}% ${end}%`;
-  }).join(", ");
-  const bg = entries.length > 0
-    ? `conic-gradient(${stops})`
-    : `conic-gradient(hsl(var(--muted)) 0 100%)`;
+    const end = (acc / sum) * 360;
+    return { cat, v, color: PIE_COLORS[i % PIE_COLORS.length], start, end };
+  });
+
+  const displayValue = hovered
+    ? "₹" + hovered.value.toLocaleString("en-IN", { maximumFractionDigits: 0 })
+    : "₹" + total.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const displayLabel = hovered ? hovered.cat : "Total";
 
   return (
     <div className="glass rounded-2xl p-5">
@@ -242,20 +264,49 @@ function SpendingOverview({ byCategory, total, loading, error }: {
       )}
       {!loading && !error && entries.length > 0 && (
         <div className="flex items-center gap-6">
+          {/* SVG donut with hover */}
           <div className="relative shrink-0" style={{ width: 160, height: 160 }}>
-            <div className="absolute inset-0 rounded-full" style={{ background: bg }} />
-            <div className="absolute inset-4 rounded-full bg-card grid place-items-center">
-              <div className="text-center">
-                <div className="text-lg font-semibold">{"₹" + total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
-                <div className="text-[11px] text-muted-foreground">Total</div>
+            <svg width={160} height={160} viewBox="0 0 160 160">
+              {segments.map((seg) => (
+                <path
+                  key={seg.cat}
+                  d={arcPath(seg.start, seg.end)}
+                  fill={seg.color}
+                  opacity={hovered ? (hovered.cat === seg.cat ? 1 : 0.35) : 0.9}
+                  className="cursor-pointer transition-opacity duration-150"
+                  onMouseEnter={() => setHovered({ cat: seg.cat, value: seg.v, pct: ((seg.v / sum) * 100).toFixed(1) })}
+                  onMouseLeave={() => setHovered(null)}
+                  style={{ filter: hovered?.cat === seg.cat ? `drop-shadow(0 0 6px ${seg.color})` : "none" }}
+                />
+              ))}
+            </svg>
+            {/* Center label */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div className="text-base font-semibold leading-tight transition-all duration-150"
+                style={{ color: hovered ? segments.find(s => s.cat === hovered.cat)?.color : undefined }}>
+                {displayValue}
               </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[90px] text-center">
+                {displayLabel}
+              </div>
+              {hovered && (
+                <div className="text-[10px] text-muted-foreground">{hovered.pct}%</div>
+              )}
             </div>
           </div>
+
+          {/* Legend */}
           <div className="flex-1 min-w-0 space-y-1.5">
             {entries.map(([cat, v], i) => {
               const pct = ((v / sum) * 100).toFixed(1);
+              const isHov = hovered?.cat === cat;
               return (
-                <div key={cat} className="flex items-center gap-2 text-sm">
+                <div
+                  key={cat}
+                  className={`flex items-center gap-2 text-sm rounded-lg px-1.5 py-0.5 transition-colors cursor-default ${isHov ? "bg-accent/40" : ""}`}
+                  onMouseEnter={() => setHovered({ cat, value: v, pct })}
+                  onMouseLeave={() => setHovered(null)}
+                >
                   <span className="size-2.5 rounded-full shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
                   <span className="flex-1 truncate">{cat}</span>
                   <span className="font-medium">{"₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
