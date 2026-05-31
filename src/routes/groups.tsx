@@ -59,6 +59,8 @@ function GroupsPage() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [inviteCodes, setInviteCodes] = useState<Record<string, string>>({});
   const [loadingCodeId, setLoadingCodeId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 5;
 
   useEffect(() => {
     const u = getLocalUser();
@@ -178,6 +180,12 @@ function GroupsPage() {
     return list.filter((g) => String(g.name ?? "").toLowerCase().includes(search.toLowerCase()));
   }, [groupsQ.data, search]);
 
+  // Reset to page 1 when search changes
+  useEffect(() => { setPage(1); }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   // Auto-select first group
   useEffect(() => {
     if (!selected && filtered.length > 0) setSelected(filtered[0]);
@@ -252,7 +260,7 @@ function GroupsPage() {
                 </button>
               </div>
             )}
-            {filtered.map((g, i) => {
+            {paginated.map((g, i) => {
               const gid = g.id ?? g.group_id;
               const isSelected = (selected?.id ?? selected?.group_id) === gid;
               return (
@@ -347,10 +355,41 @@ function GroupsPage() {
             })}
           </div>
 
-          {/* Footer */}
+          {/* Footer with pagination */}
           {filtered.length > 0 && (
-            <div className="px-5 py-3 border-t border-border text-xs text-muted-foreground">
-              Showing 1 to {filtered.length} of {filtered.length} group{filtered.length !== 1 ? "s" : ""}
+            <div className="px-5 py-3 border-t border-border flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} group{filtered.length !== 1 ? "s" : ""}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="h-7 w-7 rounded-lg border border-border text-xs grid place-items-center hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  ‹
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={`h-7 w-7 rounded-lg border text-xs grid place-items-center transition-colors ${
+                      p === page
+                        ? "border-primary bg-primary/20 text-primary font-semibold"
+                        : "border-border hover:bg-accent text-muted-foreground"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="h-7 w-7 rounded-lg border border-border text-xs grid place-items-center hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  ›
+                </button>
+              </div>
             </div>
           )}
         </div>
