@@ -16,7 +16,6 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as GroupsRouteImport } from './routes/groups'
 import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ChatRouteImport } from './routes/chat'
-import { Route as BudgetsRouteImport } from './routes/budgets'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as AiToolsRouteImport } from './routes/ai-tools'
 import { Route as IndexRouteImport } from './routes/index'
@@ -57,11 +56,6 @@ const ChatRoute = ChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BudgetsRoute = BudgetsRouteImport.update({
-  id: '/budgets',
-  path: '/budgets',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
@@ -87,7 +81,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ai-tools': typeof AiToolsRoute
   '/approvals': typeof ApprovalsRoute
-  '/budgets': typeof BudgetsRoute
   '/chat': typeof ChatRoute
   '/expenses': typeof ExpensesRoute
   '/groups': typeof GroupsRoute
@@ -101,7 +94,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ai-tools': typeof AiToolsRoute
   '/approvals': typeof ApprovalsRoute
-  '/budgets': typeof BudgetsRoute
   '/chat': typeof ChatRoute
   '/expenses': typeof ExpensesRoute
   '/groups': typeof GroupsRoute
@@ -116,7 +108,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ai-tools': typeof AiToolsRoute
   '/approvals': typeof ApprovalsRoute
-  '/budgets': typeof BudgetsRoute
   '/chat': typeof ChatRoute
   '/expenses': typeof ExpensesRoute
   '/groups': typeof GroupsRoute
@@ -132,7 +123,6 @@ export interface FileRouteTypes {
     | '/'
     | '/ai-tools'
     | '/approvals'
-    | '/budgets'
     | '/chat'
     | '/expenses'
     | '/groups'
@@ -146,7 +136,6 @@ export interface FileRouteTypes {
     | '/'
     | '/ai-tools'
     | '/approvals'
-    | '/budgets'
     | '/chat'
     | '/expenses'
     | '/groups'
@@ -160,7 +149,6 @@ export interface FileRouteTypes {
     | '/'
     | '/ai-tools'
     | '/approvals'
-    | '/budgets'
     | '/chat'
     | '/expenses'
     | '/groups'
@@ -175,7 +163,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AiToolsRoute: typeof AiToolsRoute
   ApprovalsRoute: typeof ApprovalsRoute
-  BudgetsRoute: typeof BudgetsRoute
   ChatRoute: typeof ChatRoute
   ExpensesRoute: typeof ExpensesRoute
   GroupsRoute: typeof GroupsRoute
@@ -237,13 +224,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/budgets': {
-      id: '/budgets'
-      path: '/budgets'
-      fullPath: '/budgets'
-      preLoaderRoute: typeof BudgetsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/approvals': {
       id: '/approvals'
       path: '/approvals'
@@ -279,7 +259,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AiToolsRoute: AiToolsRoute,
   ApprovalsRoute: ApprovalsRoute,
-  BudgetsRoute: BudgetsRoute,
   ChatRoute: ChatRoute,
   ExpensesRoute: ExpensesRoute,
   GroupsRoute: GroupsRoute,

@@ -19,7 +19,7 @@ const NAV = [
   { to: "/reports", label: "Reports", icon: FileText },
   { to: "/chat", label: "AI Workspace", icon: Sparkles, badge: "Beta" },
   { to: "/ai-tools", label: "AI Tools", icon: Wrench },
-  { to: "/budgets", label: "Budgets", icon: PiggyBank },
+  // { to: "/budgets", label: "Budgets", icon: PiggyBank },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
