@@ -22,7 +22,7 @@ const ALLOWED = new Set([
   "add_group_expense", "approve_group_expense", "reject_group_expense",
   "list_pending_group_expenses", "list_my_pending_approvals", "list_group_transactions",
   "delete_group_expense", "group_summary", "group_balances", "simplify_group_debts",
-  "record_settlement", "list_group_settlements",
+  "record_settlement", "list_group_settlements","no_tool_match",
 ]);
 
 const corsHeaders = {
@@ -81,7 +81,11 @@ async function callGemini(
       const json = await res.json();
       return { ok: true, data: json };
     }
-    if (res.status === 503 || res.status === 429 || res.status === 400) continue; // try next model
+    if (res.status === 503 || res.status === 429 || res.status === 400) {
+  const errText = await res.text().catch(() => "");
+  console.log(`[${model}] ${res.status}:`, errText.slice(0, 300));
+  continue;
+} // try next model
     if (res.status === 401) return { ok: false, error: "Invalid Gemini API key", retry: false };
     const errText = await res.text().catch(() => "");
     return { ok: false, error: `AI error ${res.status}: ${errText.slice(0, 200)}`, retry: false };
