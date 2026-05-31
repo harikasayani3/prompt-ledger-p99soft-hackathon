@@ -65,7 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const callTool = useServerFn(mcpCall);
 
-  // helper — detect session expiry from any tool error
+  // It detects for any session expiry happens in application and add a banner as sign in again
   const checkExpiry = (msg: string) => {
     if (msg.toLowerCase().includes("session expired") || msg.toLowerCase().includes("login_get_api_key")) {
       setSessionExpired(true);
