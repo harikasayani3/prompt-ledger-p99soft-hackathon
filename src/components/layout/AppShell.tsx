@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bell, Home, Sparkles, Users, Receipt, ClipboardCheck,
   FileText, Settings, Moon, Sun, LogOut, PiggyBank, Wrench,
@@ -37,6 +37,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
   const [budgetLimit, setBudgetLimit] = useState(0);
 
+  // Track whether the approvals query has ever succeeded so we don't
+  // show the banner on the very first attempt (which may fail transiently).
+  const approvalsLoadedOnce = useRef(false);
+
   useEffect(() => {
     const u = getLocalUser();
     if (!u?.apiKey) {
@@ -44,6 +48,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
     setUser(u);
+    // Reset session-expired banner whenever a new user/key is loaded
+    // (covers the re-login case where AppShell stays mounted).
+    setSessionExpired(false);
+    approvalsLoadedOnce.current = false;
   }, [navigate]);
 
   // load budget settings — re-run when user is set or settings are saved
@@ -65,9 +73,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const callTool = useServerFn(mcpCall);
 
-  // It detects for any session expiry happens in application and add a banner as sign in again
+  /**
+   * Only flag session expiry when:
+   * 1. The error message explicitly says "session expired" (from supabase.server.ts)
+   * 2. At least one successful load has already happened (so we don't fire on
+   *    a transient first-load failure right after login).
+   *
+   * We intentionally do NOT match "login_get_api_key" because that string
+   * appears in normal "invalid key" error messages and would cause false positives
+   * immediately after a fresh login while the session is still being established.
+   */
   const checkExpiry = (msg: string) => {
-    if (msg.toLowerCase().includes("session expired") || msg.toLowerCase().includes("login_get_api_key")) {
+    if (!approvalsLoadedOnce.current) {
+      // Log for debugging but don't show the banner on first-load failures
+      console.warn("[AppShell] Auth error on first load (suppressed banner):", msg);
+      return;
+    }
+    const lower = msg.toLowerCase();
+    if (lower.includes("session expired")) {
+      console.warn("[AppShell] Session expiry detected:", msg);
       setSessionExpired(true);
     }
   };
@@ -79,7 +103,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     queryFn: async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = await callTool({ data: { apiKey: user!.apiKey, name: "list_my_pending_approvals", args: {} } }) as any;
-      if (!r.ok) { checkExpiry(r.error ?? ""); return 0; }
+      if (!r.ok) {
+        checkExpiry(r.error ?? "");
+        return 0;
+      }
+      // Mark that we've had at least one successful load
+      approvalsLoadedOnce.current = true;
       const data = r.data as unknown;
       const list = Array.isArray((data as { pending?: unknown[] })?.pending)
         ? (data as { pending: unknown[] }).pending
@@ -119,6 +148,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const handleSignOut = () => {
     clearLocalUser();
+    setSessionExpired(false);
+    approvalsLoadedOnce.current = false;
     navigate({ to: "/login" });
   };
 
@@ -253,14 +284,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </header>
         <div className="p-6 flex-1 min-w-0">
-          {/* Session expired banner */}
+          {/* Session expired banner — only shown after a confirmed expiry, not on first load */}
           {sessionExpired && (
             <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-destructive/15 border border-destructive/40 px-4 py-3">
               <div className="text-sm text-destructive font-medium">
                 ⚠ Your session has expired. Please sign in again to reload your data.
               </div>
               <button
-                onClick={() => { clearLocalUser(); navigate({ to: "/login" }); }}
+                onClick={() => { clearLocalUser(); setSessionExpired(false); navigate({ to: "/login" }); }}
                 className="shrink-0 h-8 px-3 rounded-lg bg-destructive text-destructive-foreground text-xs font-medium hover:opacity-90"
               >
                 Sign in again
