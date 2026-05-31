@@ -8,7 +8,7 @@ import { mcpCall } from "@/lib/mcp/mcp.functions";
 import { toast } from "sonner";
 import {
   Plus, Search, MoreVertical, Users,
-  ChevronDown, X, Check,
+  ChevronDown, X, Check, Copy, Link,
 } from "lucide-react";
 
 export const Route = createFileRoute("/groups")({ component: () => <AppShell><GroupsPage /></AppShell> });
@@ -54,12 +54,25 @@ function GroupsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newKind, setNewKind] = useState("trip");
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [emailInput, setEmailInput] = useState("");
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [inviteCodes, setInviteCodes] = useState<Record<string, string>>({});
+  const [loadingCodeId, setLoadingCodeId] = useState<string | null>(null);
 
   useEffect(() => {
     const u = getLocalUser();
     setApiKey(u?.apiKey ?? "");
     setLocalUser(u);
   }, []);
+
+  // Close 3-dot menu on outside click
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const handler = () => setMenuOpenId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [menuOpenId]);
 
   const callTool = useServerFn(mcpCall);
   const qc = useQueryClient();
@@ -126,16 +139,28 @@ function GroupsPage() {
     },
   });
 
-  // Create group
+  // Create group + send invites
   const createMut = useMutation({
     mutationFn: async () => {
+      // Step 1: create the group
       const r = await callTool({ data: { apiKey, name: "create_group", args: { name: newName, kind: newKind } } });
       if (!r.ok) throw new Error(r.error);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const groupId: string = (r.data as any)?.group_id ?? "";
+
+      // Step 2: send invites if emails were provided
+      const emails = inviteEmails.trim();
+      if (emails && groupId) {
+        const inviteR = await callTool({
+          data: { apiKey, name: "send_group_invite", args: { group_id: groupId, emails } },
+        });
+        if (!inviteR.ok) throw new Error(`Group created but invite failed: ${inviteR.error}`);
+      }
       return r.data;
     },
     onSuccess: () => {
-      toast.success("Group created!");
-      setNewName(""); setNewKind("trip"); setShowCreate(false);
+      toast.success("Group created and invites sent!");
+      setNewName(""); setNewKind("trip"); setInviteEmails(""); setEmailInput(""); setShowCreate(false);
       qc.invalidateQueries({ queryKey: ["groups"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
@@ -160,6 +185,23 @@ function GroupsPage() {
 
   // KPI totals across all groups — kept for potential future use
   const _totalGroups = groupsQ.data?.length ?? 0;
+
+  async function getInviteCode(groupId: string) {
+    if (inviteCodes[groupId]) return; // already fetched
+    setLoadingCodeId(groupId);
+    try {
+      const r = await callTool({ data: { apiKey, name: "create_group_invite", args: { group_id: groupId, expires_in_days: 7 } } });
+      if (r.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const code = (r.data as any)?.invite_code ?? "";
+        setInviteCodes((p) => ({ ...p, [groupId]: code }));
+      } else {
+        toast.error("Failed to get invite code");
+      }
+    } finally {
+      setLoadingCodeId(null);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -239,9 +281,67 @@ function GroupsPage() {
 
                   {/* Stats removed — Total Spent and Balance not shown in list */}
 
-                  <button className="text-muted-foreground hover:text-foreground p-1 rounded" onClick={(e) => e.stopPropagation()}>
-                    <MoreVertical className="size-4" />
-                  </button>
+                  {/* 3-dots menu */}
+                  <div className="relative shrink-0">
+                    <button
+                      className="text-muted-foreground hover:text-foreground p-1 rounded"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const id = gid as string;
+                        if (menuOpenId === id) {
+                          setMenuOpenId(null);
+                        } else {
+                          setMenuOpenId(id);
+                          getInviteCode(id);
+                        }
+                      }}
+                    >
+                      <MoreVertical className="size-4" />
+                    </button>
+
+                    {menuOpenId === gid && (
+                      <div
+                        className="absolute right-0 top-8 z-50 w-64 glass rounded-xl border border-border shadow-2xl p-3 space-y-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="text-[11px] text-muted-foreground font-medium px-1 mb-1 flex items-center gap-1.5">
+                          <Link className="size-3" /> Invite Code
+                        </div>
+                        {loadingCodeId === gid ? (
+                          <div className="text-xs text-muted-foreground px-1">Generating…</div>
+                        ) : inviteCodes[gid as string] ? (
+                          <>
+                            <div className="flex items-center gap-2 bg-secondary/60 rounded-lg px-3 py-2 border border-border">
+                              <code className="flex-1 text-sm font-mono text-primary tracking-wider">
+                                {inviteCodes[gid as string]}
+                              </code>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(inviteCodes[gid as string]);
+                                  toast.success("Code copied!");
+                                }}
+                                className="text-muted-foreground hover:text-foreground shrink-0"
+                                title="Copy code"
+                              >
+                                <Copy className="size-3.5" />
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground px-1">
+                              Share this code — expires in 7 days
+                            </p>
+                          </>
+                        ) : (
+                          <div className="text-xs text-muted-foreground px-1">Could not generate code</div>
+                        )}
+                        <button
+                          onClick={() => setMenuOpenId(null)}
+                          className="w-full text-xs text-muted-foreground hover:text-foreground text-center pt-1"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -322,16 +422,74 @@ function GroupsPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Email invites */}
+              <div>
+                <label className="text-sm font-medium block mb-1">
+                  Invite members <span className="text-muted-foreground font-normal">(required)</span>
+                </label>
+                {/* Email tag input */}
+                <div className="min-h-[42px] w-full px-3 py-2 rounded-lg bg-input border border-border text-sm focus-within:ring-2 focus-within:ring-ring flex flex-wrap gap-1.5 items-center">
+                  {inviteEmails.split(",").filter(e => e.trim()).map((email, i) => (
+                    <span key={i} className="flex items-center gap-1 bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">
+                      {email.trim()}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const list = inviteEmails.split(",").filter(e => e.trim());
+                          list.splice(i, 1);
+                          setInviteEmails(list.join(","));
+                        }}
+                        className="hover:text-destructive ml-0.5"
+                      >
+                        <X className="size-2.5" />
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "," || e.key === " ") {
+                        e.preventDefault();
+                        const val = emailInput.trim().replace(/,$/, "");
+                        if (val && val.includes("@")) {
+                          setInviteEmails(p => p ? `${p},${val}` : val);
+                          setEmailInput("");
+                        }
+                      }
+                      if (e.key === "Backspace" && !emailInput && inviteEmails) {
+                        const list = inviteEmails.split(",").filter(e => e.trim());
+                        list.pop();
+                        setInviteEmails(list.join(","));
+                      }
+                    }}
+                    onBlur={() => {
+                      const val = emailInput.trim().replace(/,$/, "");
+                      if (val && val.includes("@")) {
+                        setInviteEmails(p => p ? `${p},${val}` : val);
+                        setEmailInput("");
+                      }
+                    }}
+                    placeholder={inviteEmails ? "" : "Type email and press Enter…"}
+                    className="flex-1 min-w-[160px] bg-transparent outline-none text-sm placeholder:text-muted-foreground"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Press Enter or comma after each email. Invite links will be sent automatically.
+                </p>
+              </div>
+
               <div className="flex gap-2 pt-1">
-                <button onClick={() => setShowCreate(false)} className="flex-1 h-10 rounded-lg border border-border text-sm hover:bg-accent">
+                <button onClick={() => { setShowCreate(false); setInviteEmails(""); setEmailInput(""); }} className="flex-1 h-10 rounded-lg border border-border text-sm hover:bg-accent">
                   Cancel
                 </button>
                 <button
-                  disabled={!newName.trim() || createMut.isPending}
+                  disabled={!newName.trim() || !inviteEmails.trim() || createMut.isPending}
                   onClick={() => createMut.mutate()}
                   className="flex-1 h-10 rounded-lg bg-gradient-to-r from-primary to-primary-glow text-primary-foreground text-sm font-medium disabled:opacity-50 hover:opacity-90"
                 >
-                  {createMut.isPending ? "Creating…" : "Create Group"}
+                  {createMut.isPending ? "Creating…" : "Create & Send Invites"}
                 </button>
               </div>
             </div>
