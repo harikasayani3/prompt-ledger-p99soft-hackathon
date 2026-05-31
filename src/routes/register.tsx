@@ -5,11 +5,13 @@ import { setApiKey, setLocalProfile } from "@/lib/api-key";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { mcpRegister } from "@/lib/mcp/mcp.functions";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/register")({ component: RegisterPage });
 
 function RegisterPage() {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,6 +36,8 @@ function RegisterPage() {
       if (!key) throw new Error("Account created but sign-in failed — please sign in manually.");
       setApiKey(key);
       setLocalProfile({ email, name: name || undefined });
+      // Clear all cached query data so stale errors don't persist after registration.
+      qc.clear();
       toast.success("Account created — welcome!");
       nav({ to: "/" });
     } catch (err) {

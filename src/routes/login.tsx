@@ -5,11 +5,13 @@ import { setApiKey, setLocalProfile } from "@/lib/api-key";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { mcpLogin } from "@/lib/mcp/mcp.functions";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
 function LoginPage() {
   const nav = useNavigate();
+  const qc = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -31,6 +33,9 @@ function LoginPage() {
         email,
         name: data?.full_name ?? data?.name ?? undefined,
       });
+      // Clear all cached query data so stale errors from the previous session
+      // don't persist and trigger false session-expiry banners after re-login.
+      qc.clear();
       toast.success("Welcome back!");
       nav({ to: "/" });
     } catch (err) {
