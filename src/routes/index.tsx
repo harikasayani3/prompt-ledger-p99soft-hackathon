@@ -97,13 +97,7 @@ function DashboardInner() {
     queryFn: async () => {
       const r = await callTool({ data: { apiKey: apiKey!, name: "list_expenses", args: { start_date: monthStart, end_date: monthEnd } } });
       if (!r.ok) throw new Error(r.error);
-      return toArray(r.data)
-        .sort((a: any, b: any) => {
-          const ta = new Date(a.created_at || a.expense_date || 0).getTime();
-          const tb = new Date(b.created_at || b.expense_date || 0).getTime();
-          return tb - ta;
-        })
-        .slice(0, 5);
+      return toArray(r.data).slice(0, 6);
     },
   });
 
@@ -149,7 +143,7 @@ function DashboardInner() {
 
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 glass rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: 560 }}>
+        <div className="lg:col-span-2 glass rounded-2xl overflow-hidden flex flex-col" style={{ height: 560 }}>
           <div className="px-5 py-4 border-b border-border flex items-center gap-2">
             <Sparkles className="size-4 text-primary" />
             <div className="font-semibold">AI Workspace</div>
