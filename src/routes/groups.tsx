@@ -101,8 +101,15 @@ function GroupsPage() {
     queryFn: async () => {
       const gid = selected?.id ?? selected?.group_id;
       const r = await callTool({ data: { apiKey, name: "list_group_members", args: { group_id: gid } } });
+      if (!r.ok) return [];
+      // withPendingHint wraps as { result: [...] } — unwrap it
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return r.ok ? (Array.isArray(r.data) ? r.data : (r.data as any)?.members ?? []) as any[] : [];
+      const d = r.data as any;
+      const arr = Array.isArray(d) ? d
+        : Array.isArray(d?.result) ? d.result
+        : Array.isArray(d?.members) ? d.members
+        : [];
+      return arr as any[];
     },
   });
 
@@ -113,8 +120,10 @@ function GroupsPage() {
     queryFn: async () => {
       const gid = selected?.id ?? selected?.group_id;
       const r = await callTool({ data: { apiKey, name: "list_group_transactions", args: { group_id: gid } } });
+      if (!r.ok) return [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return r.ok ? (Array.isArray(r.data) ? r.data : (r.data as any)?.transactions ?? []) as any[] : [];
+      const d = r.data as any;
+      return (Array.isArray(d) ? d : Array.isArray(d?.result) ? d.result : Array.isArray(d?.transactions) ? d.transactions : []) as any[];
     },
   });
 
@@ -125,8 +134,10 @@ function GroupsPage() {
     queryFn: async () => {
       const gid = selected?.id ?? selected?.group_id;
       const r = await callTool({ data: { apiKey, name: "group_summary", args: { group_id: gid } } });
+      if (!r.ok) return null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return r.ok ? r.data as any : null;
+      const d = r.data as any;
+      return (d?.result ?? d) as any;
     },
   });
 
@@ -138,8 +149,10 @@ function GroupsPage() {
     queryFn: async () => {
       const gid = selected?.id ?? selected?.group_id;
       const r = await callTool({ data: { apiKey, name: "group_balances", args: { group_id: gid, include_settlements: false } } });
+      if (!r.ok) return null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return r.ok ? r.data as any : null;
+      const d = r.data as any;
+      return (d?.result ?? d) as any;
     },
   });
 
