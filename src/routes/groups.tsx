@@ -662,8 +662,10 @@ function GroupDetail({
     }
   }
 
-  // Current user = owner member
-  const myMember = members.find((m) => m.role === "owner") ?? members[0];
+  // Identify current user by matching their email from localUser against enriched member data
+  const myMember = members.find((m) =>
+    m.email && localUser?.email && m.email.toLowerCase() === localUser.email.toLowerCase()
+  ) ?? members.find((m) => m.role === "owner") ?? members[0];
   const myUserId: string = myMember?.user_id ?? "";
   const myBalance: number = myUserId ? (netByUser[myUserId] ?? 0) : 0;
   const iOwe = myBalance < 0 ? Math.abs(myBalance) : 0;
@@ -674,23 +676,16 @@ function GroupDetail({
     if (userId === myUserId && localUser) {
       return localUser.name ?? localUser.email.split("@")[0];
     }
+    const member = members.find((m) => m.user_id === userId);
+    if (member?.display_name) return member.display_name;
+    if (member?.email) return member.email.split("@")[0];
     const idx = members.findIndex((m) => m.user_id === userId);
     return idx >= 0 ? `Member ${idx + 1}` : userId.slice(0, 8);
   }
 
   return (
     <div className="glass rounded-2xl overflow-hidden flex flex-col gap-0">
-      {/* Cover */}
-      <div className="relative h-28 bg-gradient-to-br from-primary/30 via-primary/10 to-transparent">
-        <div className="absolute inset-0 opacity-20" style={{
-          backgroundImage: "radial-gradient(circle at 30% 50%, #a78bfa 0%, transparent 60%), radial-gradient(circle at 80% 20%, #60a5fa 0%, transparent 50%)",
-        }} />
-        <button className="absolute top-3 right-3 size-7 rounded-full bg-black/30 grid place-items-center hover:bg-black/50 transition">
-          <span className="text-white text-xs">✏️</span>
-        </button>
-      </div>
-
-      <div className="px-5 pb-5 -mt-6 space-y-4">
+      <div className="px-5 pt-5 pb-5 space-y-4">
         {/* Group identity */}
         <div className="flex items-end gap-3">
           <div className={`size-14 rounded-xl grid place-items-center text-2xl shrink-0 border-2 border-background ${KIND_COLORS[group.kind] ?? "bg-secondary"}`}>
@@ -748,7 +743,7 @@ function GroupDetail({
                 const isMe = uid === myUserId;
                 const name = isMe
                   ? (localUser?.name ?? localUser?.email?.split("@")[0] ?? "You")
-                  : `Member ${i + 1}`;
+                  : (m.display_name ?? m.email?.split("@")[0] ?? `Member ${i + 1}`);
                 const balance: number = netByUser[uid] ?? 0;
                 const initial = name.slice(0, 1).toUpperCase();
 
