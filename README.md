@@ -36,11 +36,6 @@ PromptLedger lets you manage expenses, split group costs, track budgets, and get
 - Top transactions list
 - AI-generated insights
 
-### Budgets
-- Create personal, category, or group budgets
-- Monthly/weekly/yearly/custom periods
-- Live actual spend tracking
-- Budget alerts and over-budget indicators
 
 ### Settings
 - Monthly salary and spending limit configuration
@@ -69,7 +64,7 @@ PromptLedger lets you manage expenses, split group costs, track budgets, and get
 | Forms | React Hook Form + Zod |
 | Notifications | Sonner |
 | Markdown | react-markdown + remark-gfm |
-    
+
 ---
 
 ## Project Structure
