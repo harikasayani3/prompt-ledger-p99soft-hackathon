@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -48,8 +48,9 @@ function DashboardInner() {
   const callTool = useServerFn(mcpCall);
 
   const today = new Date();
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const monthStart = toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1));
+  const monthEnd = toLocalISO(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
   const summary = useQuery({
     enabled: !!apiKey,
@@ -96,7 +97,7 @@ function DashboardInner() {
     queryFn: async () => {
       const r = await callTool({ data: { apiKey: apiKey!, name: "list_expenses", args: { start_date: monthStart, end_date: monthEnd } } });
       if (!r.ok) throw new Error(r.error);
-      return toArray(r.data).slice(0, 8);
+      return toArray(r.data).slice(0, 6);
     },
   });
 
@@ -142,7 +143,7 @@ function DashboardInner() {
 
       {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 glass rounded-2xl overflow-hidden flex flex-col" style={{ minHeight: 560 }}>
+        <div className="lg:col-span-2 glass rounded-2xl overflow-hidden flex flex-col" style={{ height: 560 }}>
           <div className="px-5 py-4 border-b border-border flex items-center gap-2">
             <Sparkles className="size-4 text-primary" />
             <div className="font-semibold">AI Workspace</div>
@@ -152,44 +153,24 @@ function DashboardInner() {
         </div>
 
         <div className="space-y-6">
-          {/* Pending approvals */}
-          <div className="glass rounded-2xl">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <div className="font-semibold">Pending Approvals</div>
-              <a href="/approvals" className="text-xs text-primary hover:underline">View all</a>
-            </div>
-            <div className="p-3 max-h-80 overflow-auto">
-              {pending.isLoading && <div className="text-sm text-muted-foreground p-3">Loading…</div>}
-              {pending.isError && <div className="text-sm text-destructive p-3">{(pending.error as Error).message}</div>}
-              {!pending.isLoading && !pending.isError && pendingCount === 0 && (
-                <div className="text-sm text-muted-foreground p-3">Nothing waiting on you.</div>
-              )}
-              {pending.data?.slice(0, 6).map((row, i) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const r: any = row;
-                return (
-                  <div key={i} className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-accent/40">
-                    <div className="size-9 rounded-lg bg-primary/15 grid place-items-center text-primary text-sm">
-                      {String(r.category ?? "?").slice(0, 1).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{r.note || r.category || "Expense"}</div>
-                      <div className="text-xs text-muted-foreground truncate">{r.group_name ?? r.group_id ?? ""}</div>
-                    </div>
-                    <div className="text-sm font-semibold">{fmtINR(Number(r.amount ?? 0))}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Groups */}
           <div className="glass rounded-2xl">
-            <div className="px-5 py-4 border-b border-border font-semibold">Your Groups</div>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <div className="font-semibold">Your Groups</div>
+              <Link to="/groups" className="text-xs text-primary hover:underline">View All</Link>
+            </div>
             <div className="p-3 max-h-80 overflow-auto">
               {groups.isLoading && <div className="text-sm text-muted-foreground p-3">Loading…</div>}
               {groups.isError && <div className="text-sm text-destructive p-3">{(groups.error as Error).message}</div>}
-              {(groups.data ?? []).slice(0, 6).map((g, i) => {
+              {(groups.data ?? [])
+                .slice()
+                .sort((a: any, b: any) => {
+                  const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+                  const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+                  return tb - ta;
+                })
+                .slice(0, 5)
+                .map((g, i) => {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const grp: any = g;
                 return (
@@ -235,18 +216,40 @@ function SpendingOverview({ byCategory, total, loading, error }: {
   loading: boolean;
   error?: string;
 }) {
+  const [hovered, setHovered] = useState<{ cat: string; value: number; pct: string } | null>(null);
+
   const entries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const sum = entries.reduce((s, [, v]) => s + v, 0) || 1;
+
+  // Build SVG arc segments
+  const R = 70, ir = 50, cx = 80, cy = 80;
+  function pt(deg: number, r: number) {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+  }
+  function arcPath(startDeg: number, endDeg: number) {
+    const gap = 2;
+    const s = startDeg + gap / 2;
+    const e = endDeg - gap / 2;
+    if (e - s <= 0) return "";
+    const lg = e - s > 180 ? 1 : 0;
+    const [x1, y1] = pt(s, R); const [x2, y2] = pt(e, R);
+    const [x3, y3] = pt(e, ir); const [x4, y4] = pt(s, ir);
+    return `M ${x1} ${y1} A ${R} ${R} 0 ${lg} 1 ${x2} ${y2} L ${x3} ${y3} A ${ir} ${ir} 0 ${lg} 0 ${x4} ${y4} Z`;
+  }
+
   let acc = 0;
-  const stops = entries.map(([, v], i) => {
-    const start = (acc / sum) * 100;
+  const segments = entries.map(([cat, v], i) => {
+    const start = (acc / sum) * 360;
     acc += v;
-    const end = (acc / sum) * 100;
-    return `${PIE_COLORS[i % PIE_COLORS.length]} ${start}% ${end}%`;
-  }).join(", ");
-  const bg = entries.length > 0
-    ? `conic-gradient(${stops})`
-    : `conic-gradient(hsl(var(--muted)) 0 100%)`;
+    const end = (acc / sum) * 360;
+    return { cat, v, color: PIE_COLORS[i % PIE_COLORS.length], start, end };
+  });
+
+  const displayValue = hovered
+    ? "₹" + hovered.value.toLocaleString("en-IN", { maximumFractionDigits: 0 })
+    : "₹" + total.toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  const displayLabel = hovered ? hovered.cat : "Total";
 
   return (
     <div className="glass rounded-2xl p-5">
@@ -261,20 +264,49 @@ function SpendingOverview({ byCategory, total, loading, error }: {
       )}
       {!loading && !error && entries.length > 0 && (
         <div className="flex items-center gap-6">
+          {/* SVG donut with hover */}
           <div className="relative shrink-0" style={{ width: 160, height: 160 }}>
-            <div className="absolute inset-0 rounded-full" style={{ background: bg }} />
-            <div className="absolute inset-4 rounded-full bg-card grid place-items-center">
-              <div className="text-center">
-                <div className="text-lg font-semibold">{"₹" + total.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
-                <div className="text-[11px] text-muted-foreground">Total</div>
+            <svg width={160} height={160} viewBox="0 0 160 160">
+              {segments.map((seg) => (
+                <path
+                  key={seg.cat}
+                  d={arcPath(seg.start, seg.end)}
+                  fill={seg.color}
+                  opacity={hovered ? (hovered.cat === seg.cat ? 1 : 0.35) : 0.9}
+                  className="cursor-pointer transition-opacity duration-150"
+                  onMouseEnter={() => setHovered({ cat: seg.cat, value: seg.v, pct: ((seg.v / sum) * 100).toFixed(1) })}
+                  onMouseLeave={() => setHovered(null)}
+                  style={{ filter: hovered?.cat === seg.cat ? `drop-shadow(0 0 6px ${seg.color})` : "none" }}
+                />
+              ))}
+            </svg>
+            {/* Center label */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <div className="text-base font-semibold leading-tight transition-all duration-150"
+                style={{ color: hovered ? segments.find(s => s.cat === hovered.cat)?.color : undefined }}>
+                {displayValue}
               </div>
+              <div className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[90px] text-center">
+                {displayLabel}
+              </div>
+              {hovered && (
+                <div className="text-[10px] text-muted-foreground">{hovered.pct}%</div>
+              )}
             </div>
           </div>
+
+          {/* Legend */}
           <div className="flex-1 min-w-0 space-y-1.5">
             {entries.map(([cat, v], i) => {
               const pct = ((v / sum) * 100).toFixed(1);
+              const isHov = hovered?.cat === cat;
               return (
-                <div key={cat} className="flex items-center gap-2 text-sm">
+                <div
+                  key={cat}
+                  className={`flex items-center gap-2 text-sm rounded-lg px-1.5 py-0.5 transition-colors cursor-default ${isHov ? "bg-accent/40" : ""}`}
+                  onMouseEnter={() => setHovered({ cat, value: v, pct })}
+                  onMouseLeave={() => setHovered(null)}
+                >
                   <span className="size-2.5 rounded-full shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
                   <span className="flex-1 truncate">{cat}</span>
                   <span className="font-medium">{"₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>

@@ -1,14 +1,15 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bell, Home, Sparkles, Users, Receipt, ClipboardCheck,
-  FileText, Settings, Moon, Sun, LogOut, Search, PiggyBank,
+  FileText, Settings, Moon, Sun, LogOut, PiggyBank, Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearLocalUser, getLocalUser, type LocalUser } from "@/lib/api-key";
 import { useQuery } from "@tanstack/react-query";
 import { mcpCall } from "@/lib/mcp/mcp.functions";
 import { useServerFn } from "@tanstack/react-start";
+import { getBudgetSettings } from "@/lib/budget-settings";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: Home },
@@ -17,7 +18,8 @@ const NAV = [
   { to: "/approvals", label: "Approvals", icon: ClipboardCheck, badgeKey: "approvals" as const },
   { to: "/reports", label: "Reports", icon: FileText },
   { to: "/chat", label: "AI Workspace", icon: Sparkles, badge: "Beta" },
-  { to: "/budgets", label: "Budgets", icon: PiggyBank },
+  { to: "/ai-tools", label: "AI Tools", icon: Wrench },
+  // { to: "/budgets", label: "Budgets", icon: PiggyBank },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -25,7 +27,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const loc = useLocation();
   const [user, setUser] = useState<LocalUser | null>(null);
-  const [dark, setDark] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [dark, setDark] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("theme");
+      if (saved) return saved === "dark";
+    }
+    return true;
+  });
+  const [budgetLimit, setBudgetLimit] = useState(0);
+
+  // Track whether the approvals query has ever succeeded so we don't
+  // show the banner on the very first attempt (which may fail transiently).
+  const approvalsLoadedOnce = useRef(false);
 
   useEffect(() => {
     const u = getLocalUser();
@@ -34,21 +48,67 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
     setUser(u);
+    // Reset session-expired banner whenever a new user/key is loaded
+    // (covers the re-login case where AppShell stays mounted).
+    setSessionExpired(false);
+    approvalsLoadedOnce.current = false;
   }, [navigate]);
+
+  // load budget settings — re-run when user is set or settings are saved
+  useEffect(() => {
+    const load = () => {
+      const email = getLocalUser()?.email ?? "";
+      setBudgetLimit(getBudgetSettings(email).limit);
+    };
+    load();
+    window.addEventListener("budget-settings-changed", load);
+    return () => window.removeEventListener("budget-settings-changed", load);
+  }, [user]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", !dark);
     document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("theme", dark ? "dark" : "light");
   }, [dark]);
 
   const callTool = useServerFn(mcpCall);
+
+  /**
+   * Only flag session expiry when:
+   * 1. The error message explicitly says "session expired" (from supabase.server.ts)
+   * 2. At least one successful load has already happened (so we don't fire on
+   *    a transient first-load failure right after login).
+   *
+   * We intentionally do NOT match "login_get_api_key" because that string
+   * appears in normal "invalid key" error messages and would cause false positives
+   * immediately after a fresh login while the session is still being established.
+   */
+  const checkExpiry = (msg: string) => {
+    if (!approvalsLoadedOnce.current) {
+      // Log for debugging but don't show the banner on first-load failures
+      console.warn("[AppShell] Auth error on first load (suppressed banner):", msg);
+      return;
+    }
+    const lower = msg.toLowerCase();
+    if (lower.includes("session expired")) {
+      console.warn("[AppShell] Session expiry detected:", msg);
+      setSessionExpired(true);
+    }
+  };
+
   const approvals = useQuery({
     queryKey: ["approvals-count", user?.apiKey],
     enabled: !!user?.apiKey,
     refetchInterval: 30_000,
     queryFn: async () => {
-      const r = await callTool({ data: { apiKey: user!.apiKey, name: "list_my_pending_approvals", args: {} } });
-      if (!r.ok) return 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = await callTool({ data: { apiKey: user!.apiKey, name: "list_my_pending_approvals", args: {} } }) as any;
+      if (!r.ok) {
+        checkExpiry(r.error ?? "");
+        return 0;
+      }
+      // Mark that we've had at least one successful load
+      approvalsLoadedOnce.current = true;
       const data = r.data as unknown;
       const list = Array.isArray((data as { pending?: unknown[] })?.pending)
         ? (data as { pending: unknown[] }).pending
@@ -57,10 +117,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
   });
 
+  // monthly spend for budget alert widget
+  const today      = new Date();
+  const month      = today.getMonth() + 1;
+  const year       = today.getFullYear();
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd   = `${year}-${String(month).padStart(2, "0")}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
+
+  const spendQ = useQuery({
+    enabled: !!user?.apiKey,
+    queryKey: ["sidebar-spend", monthStart, monthEnd, user?.apiKey],
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = await callTool({ data: { apiKey: user!.apiKey, name: "summarize", args: { start_date: monthStart, end_date: monthEnd } } }) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return r.ok && Array.isArray(r.data) ? (r.data as any[]).reduce((s: number, c: any) => s + Number(c.total_amount ?? 0), 0) : 0;
+    },
+  });
+
+  const totalSpent  = spendQ.data ?? 0;
+  const isOverLimit = budgetLimit > 0 && totalSpent > budgetLimit;
+  const spendPct    = budgetLimit > 0 ? Math.min(Math.round((totalSpent / budgetLimit) * 100), 100) : 0;
+
+  // donut ring for sidebar widget
+  const R = 28, stroke = 5, circ = 2 * Math.PI * R;
+  const dash = (circ * spendPct) / 100;
+
   if (!user) return <div className="min-h-screen grid place-items-center text-muted-foreground">Loading…</div>;
 
   const handleSignOut = () => {
     clearLocalUser();
+    setSessionExpired(false);
+    approvalsLoadedOnce.current = false;
     navigate({ to: "/login" });
   };
 
@@ -111,8 +200,51 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           );
         })}
 
+        {/* Budget alert widget */}
+        {budgetLimit > 0 && (
+          <div className={`mt-auto mb-2 rounded-xl p-3 border transition-colors ${
+            isOverLimit
+              ? "bg-destructive/15 border-destructive/40"
+              : "bg-secondary/50 border-border"
+          }`}>
+            <div className="flex items-center gap-3">
+              {/* mini donut */}
+              <div className="relative shrink-0" style={{ width: 64, height: 64 }}>
+                <svg width={64} height={64} viewBox="0 0 64 64">
+                  <circle cx={32} cy={32} r={R} fill="none" stroke="hsl(var(--secondary))" strokeWidth={stroke} />
+                  <circle
+                    cx={32} cy={32} r={R} fill="none"
+                    stroke={isOverLimit ? "hsl(var(--destructive))" : "#22c55e"}
+                    strokeWidth={stroke}
+                    strokeDasharray={`${dash} ${circ}`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 32 32)"
+                  />
+                  <circle cx={32} cy={32 - R} r={2.5} fill={isOverLimit ? "hsl(var(--destructive))" : "#22c55e"} />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className={`text-xs font-bold leading-none ${isOverLimit ? "text-destructive" : ""}`}>{spendPct}%</span>
+                  <span className="text-[9px] text-muted-foreground">Spent</span>
+                </div>
+              </div>
+              {/* text */}
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-bold leading-none ${isOverLimit ? "text-destructive" : ""}`}>
+                  ₹{Math.round(totalSpent).toLocaleString("en-IN")}
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  of ₹{Math.round(budgetLimit).toLocaleString("en-IN")} limit
+                </div>
+                {isOverLimit && (
+                  <div className="text-[10px] text-destructive font-semibold mt-1">⚠ Over budget!</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* User card */}
-        <div className="mt-auto p-3 rounded-xl glass flex items-center gap-3">
+        <div className="p-3 rounded-xl glass flex items-center gap-3">
           <div className="size-9 rounded-full bg-primary/20 grid place-items-center text-primary font-semibold">
             {(user.name ?? user.email).slice(0, 1).toUpperCase()}
           </div>
@@ -134,16 +266,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 min-w-0 flex flex-col">
         <header className="sticky top-0 z-10 backdrop-blur bg-background/70 border-b border-border px-6 py-3 flex items-center gap-3">
           <div className="md:hidden font-bold"><span className="text-foreground">Prompt</span><span className="text-primary">Ledger</span></div>
-          <div className="flex-1 max-w-xl ml-auto md:ml-0 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <input
-              placeholder="Search anything…"
-              className="w-full pl-9 pr-16 h-9 rounded-lg bg-input/60 border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5">
-              ⌘ K
-            </kbd>
-          </div>
+          <div className="flex-1" />
           <button
             className="relative size-9 rounded-full bg-secondary grid place-items-center hover:bg-accent transition"
             title="Notifications"
@@ -160,7 +283,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </button>
         </header>
-        <div className="p-6 flex-1 min-w-0">{children}</div>
+        <div className="p-6 flex-1 min-w-0">
+          {/* Session expired banner — only shown after a confirmed expiry, not on first load */}
+          {sessionExpired && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-destructive/15 border border-destructive/40 px-4 py-3">
+              <div className="text-sm text-destructive font-medium">
+                ⚠ Your session has expired. Please sign in again to reload your data.
+              </div>
+              <button
+                onClick={() => { clearLocalUser(); setSessionExpired(false); navigate({ to: "/login" }); }}
+                className="shrink-0 h-8 px-3 rounded-lg bg-destructive text-destructive-foreground text-xs font-medium hover:opacity-90"
+              >
+                Sign in again
+              </button>
+            </div>
+          )}
+          {children}
+        </div>
       </main>
     </div>
   );

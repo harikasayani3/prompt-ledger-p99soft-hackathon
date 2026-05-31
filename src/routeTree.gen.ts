@@ -16,8 +16,8 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as GroupsRouteImport } from './routes/groups'
 import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as ChatRouteImport } from './routes/chat'
-import { Route as BudgetsRouteImport } from './routes/budgets'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
+import { Route as AiToolsRouteImport } from './routes/ai-tools'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 
@@ -56,14 +56,14 @@ const ChatRoute = ChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
-const BudgetsRoute = BudgetsRouteImport.update({
-  id: '/budgets',
-  path: '/budgets',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AiToolsRoute = AiToolsRouteImport.update({
+  id: '/ai-tools',
+  path: '/ai-tools',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -79,8 +79,8 @@ const ApiChatRoute = ApiChatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ai-tools': typeof AiToolsRoute
   '/approvals': typeof ApprovalsRoute
-  '/budgets': typeof BudgetsRoute
   '/chat': typeof ChatRoute
   '/expenses': typeof ExpensesRoute
   '/groups': typeof GroupsRoute
@@ -92,8 +92,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ai-tools': typeof AiToolsRoute
   '/approvals': typeof ApprovalsRoute
-  '/budgets': typeof BudgetsRoute
   '/chat': typeof ChatRoute
   '/expenses': typeof ExpensesRoute
   '/groups': typeof GroupsRoute
@@ -106,8 +106,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ai-tools': typeof AiToolsRoute
   '/approvals': typeof ApprovalsRoute
-  '/budgets': typeof BudgetsRoute
   '/chat': typeof ChatRoute
   '/expenses': typeof ExpensesRoute
   '/groups': typeof GroupsRoute
@@ -121,8 +121,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ai-tools'
     | '/approvals'
-    | '/budgets'
     | '/chat'
     | '/expenses'
     | '/groups'
@@ -134,8 +134,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ai-tools'
     | '/approvals'
-    | '/budgets'
     | '/chat'
     | '/expenses'
     | '/groups'
@@ -147,8 +147,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/ai-tools'
     | '/approvals'
-    | '/budgets'
     | '/chat'
     | '/expenses'
     | '/groups'
@@ -161,8 +161,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AiToolsRoute: typeof AiToolsRoute
   ApprovalsRoute: typeof ApprovalsRoute
-  BudgetsRoute: typeof BudgetsRoute
   ChatRoute: typeof ChatRoute
   ExpensesRoute: typeof ExpensesRoute
   GroupsRoute: typeof GroupsRoute
@@ -224,18 +224,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/budgets': {
-      id: '/budgets'
-      path: '/budgets'
-      fullPath: '/budgets'
-      preLoaderRoute: typeof BudgetsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/approvals': {
       id: '/approvals'
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof ApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ai-tools': {
+      id: '/ai-tools'
+      path: '/ai-tools'
+      fullPath: '/ai-tools'
+      preLoaderRoute: typeof AiToolsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -257,8 +257,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AiToolsRoute: AiToolsRoute,
   ApprovalsRoute: ApprovalsRoute,
-  BudgetsRoute: BudgetsRoute,
   ChatRoute: ChatRoute,
   ExpensesRoute: ExpensesRoute,
   GroupsRoute: GroupsRoute,
