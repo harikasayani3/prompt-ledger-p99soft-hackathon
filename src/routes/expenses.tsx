@@ -380,22 +380,22 @@ function ExpensesPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard
-          icon={<Receipt className="size-5 text-primary" />} bg="bg-primary/10"
+          icon={<Receipt className="size-5 text-primary" />} bg="kpi-purple"
           label="Total Expenses" value={summaryQ.isLoading ? "…" : fmtINR(totalSpent)}
           change={12.5} prevLabel={`vs ${prevMonthLabel}`}
         />
         <KpiCard
-          icon={<BarChart2 className="size-5 text-info" />} bg="bg-info/10"
+          icon={<BarChart2 className="size-5 text-info" />} bg="kpi-info"
           label="This Month" value={summaryQ.isLoading ? "…" : fmtINR(totalSpent)}
           change={12.5} prevLabel={`vs ${prevMonthLabel}`}
         />
         <KpiCard
-          icon={<TrendingDown className="size-5 text-success" />} bg="bg-success/10"
+          icon={<TrendingDown className="size-5 text-success" />} bg="kpi-success"
           label="Average per Day" value={summaryQ.isLoading ? "…" : fmtINR(avgPerDay)}
           change={8.2} prevLabel={`vs ${prevMonthLabel}`}
         />
         <KpiCard
-          icon={<TrendingUp className="size-5 text-warning" />} bg="bg-warning/10"
+          icon={<TrendingUp className="size-5 text-warning" />} bg="kpi-warning"
           label="Transactions" value={summaryQ.isLoading ? "…" : String(txCount)}
           change={14} prevLabel={`vs ${prevMonthLabel}`}
         />
@@ -645,17 +645,15 @@ function KpiCard({ icon, bg, label, value, change, prevLabel }: {
 }) {
   const up = change >= 0;
   return (
-    <div className="glass rounded-2xl p-4 flex items-center gap-4">
-      <div className={`size-12 rounded-xl grid place-items-center shrink-0 ${bg}`}>
-        {icon}
+    <div className={`rounded-2xl p-4 border border-border ${bg}`}>
+      <div className="flex items-start justify-between">
+        <div className="text-sm text-foreground/80">{label}</div>
+        <div className="size-9 rounded-lg bg-background/30 grid place-items-center shrink-0">{icon}</div>
       </div>
-      <div className="min-w-0">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className="text-xl font-bold tracking-tight">{value}</div>
-        <div className={`flex items-center gap-1 text-[11px] ${up ? "text-success" : "text-destructive"}`}>
-          {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-          <span>{Math.abs(change).toFixed(1)}% {prevLabel}</span>
-        </div>
+      <div className="mt-3 text-2xl font-semibold tracking-tight">{value}</div>
+      <div className={`mt-1 flex items-center gap-1 text-[11px] ${up ? "text-success" : "text-destructive"}`}>
+        {up ? <TrendingUp className="size-3 shrink-0" /> : <TrendingDown className="size-3 shrink-0" />}
+        <span>{Math.abs(change).toFixed(1)}% {prevLabel}</span>
       </div>
     </div>
   );
