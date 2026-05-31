@@ -174,18 +174,6 @@ src/
 
 ---
 
-## Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key   # optional
-GEMINI_API_KEY=your-gemini-api-key
-```
-
----
 
 ## Getting Started
 
