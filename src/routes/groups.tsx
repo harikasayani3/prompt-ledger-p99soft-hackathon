@@ -142,7 +142,13 @@ function GroupsPage() {
   });
 
   const filtered = useMemo(() => {
-    const list = groupsQ.data ?? [];
+    const list = [...(groupsQ.data ?? [])];
+    // Always sort by most recently created first
+    list.sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
     if (!search.trim()) return list;
     return list.filter((g) => String(g.name ?? "").toLowerCase().includes(search.toLowerCase()));
   }, [groupsQ.data, search]);
@@ -178,19 +184,14 @@ function GroupsPage() {
           {/* List header */}
           <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
             <div className="font-semibold">All Groups</div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search groups…"
-                  className="h-8 pl-8 pr-3 rounded-lg bg-input border border-border text-xs focus:outline-none focus:ring-1 focus:ring-ring w-44"
-                />
-              </div>
-              <button className="h-8 px-2.5 rounded-lg bg-input border border-border text-xs flex items-center gap-1 hover:bg-accent">
-                Sort by: Recent Activity <ChevronDown className="size-3" />
-              </button>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search groups…"
+                className="h-8 pl-8 pr-3 rounded-lg bg-input border border-border text-xs focus:outline-none focus:ring-1 focus:ring-ring w-44"
+              />
             </div>
           </div>
 
@@ -236,15 +237,7 @@ function GroupsPage() {
                     </div>
                   </div>
 
-                  {/* Stats */}
-                  <div className="text-right shrink-0 hidden sm:block">
-                    <div className="text-sm font-semibold">—</div>
-                    <div className="text-[11px] text-muted-foreground">Total Spent</div>
-                  </div>
-                  <div className="text-right shrink-0 hidden md:block w-20">
-                    <div className="text-sm font-semibold text-success">—</div>
-                    <div className="text-[11px] text-muted-foreground">Balance</div>
-                  </div>
+                  {/* Stats removed — Total Spent and Balance not shown in list */}
 
                   <button className="text-muted-foreground hover:text-foreground p-1 rounded" onClick={(e) => e.stopPropagation()}>
                     <MoreVertical className="size-4" />
