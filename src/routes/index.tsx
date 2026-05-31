@@ -48,8 +48,9 @@ function DashboardInner() {
   const callTool = useServerFn(mcpCall);
 
   const today = new Date();
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const toLocalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const monthStart = toLocalISO(new Date(today.getFullYear(), today.getMonth(), 1));
+  const monthEnd = toLocalISO(new Date(today.getFullYear(), today.getMonth() + 1, 0));
 
   const summary = useQuery({
     enabled: !!apiKey,
