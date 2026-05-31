@@ -69,7 +69,7 @@ PromptLedger lets you manage expenses, split group costs, track budgets, and get
 | Forms | React Hook Form + Zod |
 | Notifications | Sonner |
 | Markdown | react-markdown + remark-gfm |
-
+    
 ---
 
 ## Project Structure
