@@ -42,7 +42,7 @@ function Approvals() {
   const q = useQuery({
     enabled: !!apiKey,
     queryKey: ["pending", apiKey],
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
     queryFn: async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const r = await callTool({ data: { apiKey, name: "list_my_pending_approvals", args: {} } }) as any;
@@ -65,8 +65,11 @@ function Approvals() {
     },
     onSuccess: (_d, v) => {
       toast.success(v.approve ? "Approved ✓" : "Rejected");
+      // Invalidate all approval-related queries so the sidebar badge,
+      // notification dropdown, and this page all update immediately.
       qc.invalidateQueries({ queryKey: ["pending"] });
       qc.invalidateQueries({ queryKey: ["approvals-count"] });
+      qc.invalidateQueries({ queryKey: ["approvals-list"] });
       qc.invalidateQueries({ queryKey: ["group-tx"] });
       qc.invalidateQueries({ queryKey: ["group-summary"] });
       qc.invalidateQueries({ queryKey: ["group-balances"] });
