@@ -110,9 +110,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       // Mark that we've had at least one successful load
       approvalsLoadedOnce.current = true;
       const data = r.data as unknown;
-      const list = Array.isArray((data as { pending?: unknown[] })?.pending)
-        ? (data as { pending: unknown[] }).pending
-        : Array.isArray(data) ? data : [];
+      // list_my_pending_approvals returns a plain array of transaction rows
+      const list = Array.isArray(data) ? data : [];
       return list.length;
     },
   });

@@ -8,7 +8,7 @@ import { mcpCall } from "@/lib/mcp/mcp.functions";
 import { toast } from "sonner";
 import {
   Plus, Search, MoreVertical, Users,
-  ChevronDown, X, Check, Copy, Link,
+  ChevronDown, X, Check, Copy, Link, Receipt, SplitSquareHorizontal,
 } from "lucide-react";
 
 export const Route = createFileRoute("/groups")({ component: () => <AppShell><GroupsPage /></AppShell> });
@@ -41,6 +41,341 @@ const KIND_EMOJI: Record<string, string> = {
   trip: "✈️", family: "🏠", team: "💼", personal_mirror: "👤",
 };
 
+const CATEGORIES = [
+  "Food & Dining", "Transport", "Accommodation", "Shopping", "Entertainment",
+  "Utilities", "Medical", "Groceries", "Travel", "Other",
+];
+
+// ---------------------------------------------------------------------------
+// Add Expense Dialog
+// ---------------------------------------------------------------------------
+
+function AddExpenseDialog({
+  group,
+  members,
+  localUser,
+  apiKey,
+  onClose,
+  onSuccess,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  group: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  members: any[];
+  localUser: LocalUser | null;
+  apiKey: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("Food & Dining");
+  const [note, setNote] = useState("");
+  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [splitType, setSplitType] = useState<"equal" | "custom">("equal");
+  // custom split: member user_id -> amount string
+  const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
+  const [payerUserId, setPayerUserId] = useState<string>(() => {
+    const me = members.find((m) =>
+      m.email && localUser?.email && m.email.toLowerCase() === localUser.email.toLowerCase()
+    );
+    return me?.user_id ?? "";
+  });
+
+  const callTool = useServerFn(mcpCall);
+
+  const totalAmount = parseFloat(amount) || 0;
+  const memberCount = members.length;
+  const equalShare = memberCount > 0 ? totalAmount / memberCount : 0;
+
+  const customTotal = Object.values(customSplits).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+  const customRemaining = totalAmount - customTotal;
+
+  function getMemberName(m: any): string {
+    if (m.email && localUser?.email && m.email.toLowerCase() === localUser.email.toLowerCase()) {
+      return localUser?.name ?? localUser?.email?.split("@")[0] ?? "You";
+    }
+    return m.display_name ?? m.email?.split("@")[0] ?? "Member";
+  }
+
+  const isCustomValid = splitType === "custom"
+    ? Math.abs(customRemaining) < 0.01
+    : true;
+  const canSubmit = totalAmount > 0 && category && isCustomValid;
+
+  const addMut = useMutation({
+    mutationFn: async () => {
+      const gid = group?.id ?? group?.group_id;
+      // Build note with split info if custom
+      let finalNote = note.trim();
+      if (splitType === "custom") {
+        const splitLines = members
+          .filter((m) => customSplits[m.user_id])
+          .map((m) => `${getMemberName(m)}: ₹${customSplits[m.user_id]}`)
+          .join(", ");
+        finalNote = finalNote ? `${finalNote} | Split: ${splitLines}` : `Split: ${splitLines}`;
+      }
+      const r = await callTool({
+        data: {
+          apiKey,
+          name: "add_group_expense",
+          args: {
+            group_id: gid,
+            expense_date: expenseDate,
+            amount: totalAmount,
+            category,
+            subcategory: splitType === "custom" ? "custom_split" : "equal_split",
+            note: finalNote,
+            payer_user_id: payerUserId || null,
+          },
+        },
+      });
+      if (!r.ok) throw new Error(r.error);
+      return r.data;
+    },
+    onSuccess: () => {
+      toast.success("Expense submitted for approval! All members will be notified.");
+      onSuccess();
+      onClose();
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to add expense"),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="glass rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+          <div>
+            <div className="font-semibold text-lg flex items-center gap-2">
+              <Receipt className="size-5 text-primary" />
+              Add Group Expense
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Will be sent for approval to all {memberCount} members
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {/* Amount */}
+          <div>
+            <label className="text-sm font-medium block mb-1.5">Total Amount (₹)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              className="w-full h-12 px-4 rounded-xl bg-input border border-border text-xl font-bold focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          {/* Category + Date */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium block mb-1.5">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1.5">Date</label>
+              <input
+                type="date"
+                value={expenseDate}
+                onChange={(e) => setExpenseDate(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          {/* Paid by */}
+          <div>
+            <label className="text-sm font-medium block mb-1.5">Paid by</label>
+            <select
+              value={payerUserId}
+              onChange={(e) => setPayerUserId(e.target.value)}
+              className="w-full h-10 px-3 rounded-xl bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">— Group / Unknown —</option>
+              {members.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {getMemberName(m)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Note */}
+          <div>
+            <label className="text-sm font-medium block mb-1.5">Note (optional)</label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. Dinner at Taj, Hotel booking…"
+              className="w-full h-10 px-3 rounded-xl bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+
+          {/* Split type */}
+          <div>
+            <label className="text-sm font-medium block mb-2">Split Type</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setSplitType("equal")}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                  splitType === "equal"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border hover:border-primary/50"
+                }`}
+              >
+                <Users className="size-4" />
+                Equal Split
+                {totalAmount > 0 && (
+                  <span className="ml-auto text-xs font-mono">{fmtINR(equalShare)} each</span>
+                )}
+              </button>
+              <button
+                onClick={() => setSplitType("custom")}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-colors ${
+                  splitType === "custom"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border hover:border-primary/50"
+                }`}
+              >
+                <SplitSquareHorizontal className="size-4" />
+                Custom Split
+              </button>
+            </div>
+          </div>
+
+          {/* Member split breakdown */}
+          <div className="rounded-xl bg-secondary/40 border border-border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">
+                {splitType === "equal" ? "Equal Split Preview" : "Custom Amounts"}
+              </div>
+              {splitType === "custom" && totalAmount > 0 && (
+                <div className={`text-xs font-medium ${Math.abs(customRemaining) < 0.01 ? "text-success" : "text-warning"}`}>
+                  {Math.abs(customRemaining) < 0.01
+                    ? "✓ Balanced"
+                    : customRemaining > 0
+                    ? `₹${customRemaining.toFixed(2)} remaining`
+                    : `₹${Math.abs(customRemaining).toFixed(2)} over`}
+                </div>
+              )}
+            </div>
+
+            {members.length === 0 && (
+              <div className="text-xs text-muted-foreground">Loading members…</div>
+            )}
+
+            {members.map((m) => {
+              const isMe = m.email && localUser?.email &&
+                m.email.toLowerCase() === localUser.email.toLowerCase();
+              const name = getMemberName(m);
+
+              return (
+                <div key={m.user_id} className="flex items-center gap-3">
+                  <div className="size-8 rounded-full bg-primary/20 grid place-items-center text-primary text-xs font-bold shrink-0">
+                    {name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate flex items-center gap-1">
+                      {name}
+                      {isMe && <span className="text-[10px] px-1 py-0.5 rounded bg-primary/15 text-primary">You</span>}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">{m.email}</div>
+                  </div>
+                  {splitType === "equal" ? (
+                    <div className="text-sm font-semibold text-right shrink-0">
+                      {totalAmount > 0 ? fmtINR(equalShare) : "—"}
+                    </div>
+                  ) : (
+                    <div className="shrink-0">
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={customSplits[m.user_id] ?? ""}
+                          onChange={(e) =>
+                            setCustomSplits((prev) => ({ ...prev, [m.user_id]: e.target.value }))
+                          }
+                          placeholder="0"
+                          className="w-24 h-8 pl-6 pr-2 rounded-lg bg-input border border-border text-sm font-mono text-right focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Auto-fill button for custom split */}
+            {splitType === "custom" && totalAmount > 0 && (
+              <button
+                onClick={() => {
+                  const share = (totalAmount / memberCount).toFixed(2);
+                  const splits: Record<string, string> = {};
+                  members.forEach((m) => { splits[m.user_id] = share; });
+                  setCustomSplits(splits);
+                }}
+                className="text-xs text-primary hover:underline mt-1"
+              >
+                Auto-fill equal amounts
+              </button>
+            )}
+          </div>
+
+          {/* Approval info banner */}
+          <div className="flex items-start gap-3 rounded-xl bg-primary/8 border border-primary/20 px-4 py-3">
+            <Check className="size-4 text-primary mt-0.5 shrink-0" />
+            <div className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Requires approval from all members.</span>{" "}
+              Once you submit, all {memberCount} members will need to approve before this expense
+              is finalized and splits are recorded.
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-1">
+            <button
+              onClick={onClose}
+              className="flex-1 h-10 rounded-xl border border-border text-sm hover:bg-accent transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={!canSubmit || addMut.isPending}
+              className="flex-1 h-10 rounded-xl bg-gradient-to-r from-primary to-primary-glow text-primary-foreground text-sm font-medium disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              {addMut.isPending ? (
+                <span>Submitting…</span>
+              ) : (
+                <>
+                  <Receipt className="size-4" />
+                  Submit for Approval
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -63,6 +398,7 @@ function GroupsPage() {
   const PAGE_SIZE = 5;
   const [showJoin, setShowJoin] = useState(false);
   const [joinCode, setJoinCode] = useState("");
+  const [showAddExpense, setShowAddExpense] = useState(false);
 
   useEffect(() => {
     const u = getLocalUser();
@@ -340,8 +676,6 @@ function GroupsPage() {
                     </div>
                   </div>
 
-                  {/* Stats removed — Total Spent and Balance not shown in list */}
-
                   {/* 3-dots menu */}
                   <div className="relative shrink-0">
                     <button
@@ -418,29 +752,17 @@ function GroupsPage() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="h-7 w-7 rounded-lg border border-border text-xs grid place-items-center hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-7 px-2 rounded text-xs border border-border disabled:opacity-40 hover:bg-accent transition-colors"
                 >
-                  ‹
+                  ← Prev
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`h-7 w-7 rounded-lg border text-xs grid place-items-center transition-colors ${
-                      p === page
-                        ? "border-primary bg-primary/20 text-primary font-semibold"
-                        : "border-border hover:bg-accent text-muted-foreground"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
+                <span className="text-xs text-muted-foreground px-1">{page}/{totalPages}</span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page === totalPages}
-                  className="h-7 w-7 rounded-lg border border-border text-xs grid place-items-center hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-7 px-2 rounded text-xs border border-border disabled:opacity-40 hover:bg-accent transition-colors"
                 >
-                  ›
+                  Next →
                 </button>
               </div>
             </div>
@@ -466,10 +788,29 @@ function GroupsPage() {
               balances={balancesQ.data}
               balancesLoading={balancesQ.isLoading}
               localUser={localUser}
+              apiKey={apiKey}
+              onAddExpense={() => setShowAddExpense(true)}
             />
           )}
         </div>
       </div>
+
+      {/* Add Expense Dialog */}
+      {showAddExpense && selected && (
+        <AddExpenseDialog
+          group={selected}
+          members={membersQ.data ?? []}
+          localUser={localUser}
+          apiKey={apiKey}
+          onClose={() => setShowAddExpense(false)}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["group-tx"] });
+            qc.invalidateQueries({ queryKey: ["group-summary"] });
+            qc.invalidateQueries({ queryKey: ["pending"] });
+            qc.invalidateQueries({ queryKey: ["approvals-count"] });
+          }}
+        />
+      )}
 
       {/* Join group modal */}
       {showJoin && (
@@ -483,24 +824,16 @@ function GroupsPage() {
             </div>
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium block mb-1">Invite Code</label>
+                <label className="text-sm font-medium block mb-1.5">Invite Code</label>
                 <input
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && joinCode.trim()) joinMut.mutate(); }}
-                  placeholder="Paste your invite code here…"
-                  className="w-full h-10 px-3 rounded-lg bg-input border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring tracking-wider"
-                  autoFocus
+                  placeholder="Enter invite code…"
+                  className="w-full h-10 px-3 rounded-xl bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono tracking-wider"
                 />
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Ask the group admin for the invite code from the 3-dots menu.
-                </p>
               </div>
               <div className="flex gap-2 pt-1">
-                <button
-                  onClick={() => { setShowJoin(false); setJoinCode(""); }}
-                  className="flex-1 h-10 rounded-lg border border-border text-sm hover:bg-accent"
-                >
+                <button onClick={() => { setShowJoin(false); setJoinCode(""); }} className="flex-1 h-10 rounded-lg border border-border text-sm hover:bg-accent">
                   Cancel
                 </button>
                 <button
@@ -521,65 +854,53 @@ function GroupsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="glass rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between mb-5">
-              <div className="font-semibold text-lg">Create a new group</div>
-              <button onClick={() => setShowCreate(false)} className="text-muted-foreground hover:text-foreground">
+              <div className="font-semibold text-lg">Create a Group</div>
+              <button onClick={() => { setShowCreate(false); setInviteEmails(""); setEmailInput(""); }} className="text-muted-foreground hover:text-foreground">
                 <X className="size-5" />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="text-sm font-medium block mb-1">Group name</label>
+                <label className="text-sm font-medium block mb-1.5">Group Name</label>
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Goa Trip 2024"
-                  className="w-full h-10 px-3 rounded-lg bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  autoFocus
+                  placeholder="e.g. Goa Trip 2025"
+                  className="w-full h-10 px-3 rounded-xl bg-input border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <div>
-                <label className="text-sm font-medium block mb-1">Type</label>
+                <label className="text-sm font-medium block mb-1.5">Type</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { value: "trip", label: "Trip", emoji: "✈️" },
-                    { value: "family", label: "Family", emoji: "🏠" },
-                    { value: "team", label: "Team", emoji: "💼" },
-                    { value: "personal_mirror", label: "Personal", emoji: "👤" },
-                  ].map((k) => (
+                  {(["trip", "family", "team", "personal_mirror"] as const).map((k) => (
                     <button
-                      key={k.value}
-                      type="button"
-                      onClick={() => setNewKind(k.value)}
-                      className={`h-12 rounded-xl border text-sm flex items-center gap-2 px-3 transition-colors ${newKind === k.value ? "border-primary bg-primary/15 text-primary" : "border-border bg-input hover:bg-accent"}`}
+                      key={k}
+                      onClick={() => setNewKind(k)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${newKind === k ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"}`}
                     >
-                      <span className="text-lg">{k.emoji}</span>
-                      <span className="font-medium">{k.label}</span>
-                      {newKind === k.value && <Check className="size-3.5 ml-auto" />}
+                      <span>{KIND_EMOJI[k]}</span>
+                      <span className="capitalize">{k.replace("_", " ")}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Email invites */}
+              {/* Invite members */}
               <div>
-                <label className="text-sm font-medium block mb-1">
-                  Invite members <span className="text-muted-foreground font-normal">(required)</span>
-                </label>
-                {/* Email tag input */}
-                <div className="min-h-[42px] w-full px-3 py-2 rounded-lg bg-input border border-border text-sm focus-within:ring-2 focus-within:ring-ring flex flex-wrap gap-1.5 items-center">
-                  {inviteEmails.split(",").filter(e => e.trim()).map((email, i) => (
-                    <span key={i} className="flex items-center gap-1 bg-primary/20 text-primary text-xs px-2 py-0.5 rounded-full">
+                <label className="text-sm font-medium block mb-1.5">Invite Members (optional)</label>
+                <div className="min-h-10 px-3 py-2 rounded-xl bg-input border border-border flex flex-wrap gap-1.5 focus-within:ring-1 focus-within:ring-ring">
+                  {inviteEmails.split(",").filter(Boolean).map((email, i) => (
+                    <span key={i} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-xs">
                       {email.trim()}
                       <button
-                        type="button"
                         onClick={() => {
-                          const list = inviteEmails.split(",").filter(e => e.trim());
+                          const list = inviteEmails.split(",").filter(Boolean);
                           list.splice(i, 1);
                           setInviteEmails(list.join(","));
                         }}
-                        className="hover:text-destructive ml-0.5"
+                        className="hover:text-destructive"
                       >
-                        <X className="size-2.5" />
+                        <X className="size-3" />
                       </button>
                     </span>
                   ))}
@@ -587,16 +908,15 @@ function GroupsPage() {
                     value={emailInput}
                     onChange={(e) => setEmailInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === "," || e.key === " ") {
+                      if (e.key === "Enter" || e.key === ",") {
                         e.preventDefault();
                         const val = emailInput.trim().replace(/,$/, "");
                         if (val && val.includes("@")) {
                           setInviteEmails(p => p ? `${p},${val}` : val);
                           setEmailInput("");
                         }
-                      }
-                      if (e.key === "Backspace" && !emailInput && inviteEmails) {
-                        const list = inviteEmails.split(",").filter(e => e.trim());
+                      } else if (e.key === "Backspace" && !emailInput) {
+                        const list = inviteEmails.split(",").filter(Boolean);
                         list.pop();
                         setInviteEmails(list.join(","));
                       }
@@ -644,6 +964,7 @@ function GroupsPage() {
 function GroupDetail({
   group, members, membersLoading, transactions, txLoading,
   summary, summaryLoading, balances, balancesLoading, localUser,
+  apiKey: _apiKey, onAddExpense,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   group: any;
@@ -660,6 +981,8 @@ function GroupDetail({
   balances: any;
   balancesLoading: boolean;
   localUser: LocalUser | null;
+  apiKey: string;
+  onAddExpense: () => void;
 }) {
   const [showAllMembers, setShowAllMembers] = useState(false);
   const visibleMembers = showAllMembers ? members : members.slice(0, 4);
@@ -684,6 +1007,10 @@ function GroupDetail({
   const iOwe = myBalance < 0 ? Math.abs(myBalance) : 0;
   const owedToMe = myBalance > 0 ? myBalance : 0;
 
+  // Pending vs approved counts
+  const pendingTx = transactions.filter((tx) => tx.status === "pending");
+  const approvedTx = transactions.filter((tx) => tx.status === "approved");
+
   function displayName(userId: string): string {
     if (!userId) return "Unknown";
     if (userId === myUserId && localUser) {
@@ -704,7 +1031,7 @@ function GroupDetail({
           <div className={`size-14 rounded-xl grid place-items-center text-2xl shrink-0 border-2 border-background ${KIND_COLORS[group.kind] ?? "bg-secondary"}`}>
             {KIND_EMOJI[group.kind] ?? "👥"}
           </div>
-          <div className="pb-1 min-w-0">
+          <div className="pb-1 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="font-bold text-base truncate">{group.name}</div>
               {group.role === "owner" && (
@@ -715,7 +1042,30 @@ function GroupDetail({
               {members.length > 0 ? `${members.length} members` : "—"} • Created on {group.created_at ? new Date(group.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
             </div>
           </div>
+          {/* Add expense button */}
+          <button
+            onClick={onAddExpense}
+            className="shrink-0 h-9 px-3 rounded-xl bg-gradient-to-r from-primary to-primary-glow text-primary-foreground text-xs font-medium flex items-center gap-1.5 hover:opacity-90 transition-opacity"
+          >
+            <Plus className="size-3.5" />
+            Add Expense
+          </button>
         </div>
+
+        {/* Pending approval banner */}
+        {pendingTx.length > 0 && (
+          <div className="flex items-center gap-2.5 rounded-xl bg-warning/10 border border-warning/30 px-3 py-2.5">
+            <div className="size-7 rounded-lg bg-warning/20 grid place-items-center shrink-0">
+              <Receipt className="size-3.5 text-warning" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-warning">
+                {pendingTx.length} expense{pendingTx.length > 1 ? "s" : ""} awaiting approval
+              </div>
+              <div className="text-[11px] text-muted-foreground">Go to Approvals to review</div>
+            </div>
+          </div>
+        )}
 
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-2">
@@ -801,7 +1151,18 @@ function GroupDetail({
         <div>
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold">Recent Activity</div>
-            <button className="text-xs text-primary hover:underline">View all</button>
+            <div className="flex items-center gap-2">
+              {approvedTx.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-success/15 text-success font-medium">
+                  {approvedTx.length} approved
+                </span>
+              )}
+              {pendingTx.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-warning/15 text-warning font-medium">
+                  {pendingTx.length} pending
+                </span>
+              )}
+            </div>
           </div>
           {txLoading ? (
             <div className="text-xs text-muted-foreground">Loading…</div>
@@ -809,19 +1170,33 @@ function GroupDetail({
             <div className="text-xs text-muted-foreground">No transactions yet.</div>
           ) : (
             <div className="space-y-2">
-              {transactions.slice(0, 5).map((tx, i) => {
+              {transactions.slice(0, 6).map((tx, i) => {
                 const cat = String(tx.category ?? "Expense");
                 const amt = Number(tx.amount ?? 0);
                 const when = tx.created_at ?? tx.expense_date;
                 const submitter = displayName(tx.submitted_by ?? "");
+                const isPending = tx.status === "pending";
+                const isRejected = tx.status === "rejected";
                 return (
                   <div key={tx.id ?? i} className="flex items-center gap-2.5">
-                    <div className="size-8 rounded-lg bg-secondary grid place-items-center text-sm shrink-0 font-medium">
+                    <div className={`size-8 rounded-lg grid place-items-center text-sm shrink-0 font-medium ${
+                      isPending ? "bg-warning/15 text-warning" : isRejected ? "bg-destructive/15 text-destructive" : "bg-secondary"
+                    }`}>
                       {cat.slice(0, 1).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate">
+                      <div className="text-xs font-medium truncate flex items-center gap-1.5">
                         {submitter} added an expense
+                        {isPending && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-warning/15 text-warning font-semibold shrink-0">
+                            Pending
+                          </span>
+                        )}
+                        {isRejected && (
+                          <span className="text-[10px] px-1 py-0.5 rounded bg-destructive/15 text-destructive font-semibold shrink-0">
+                            Rejected
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate">{tx.note || cat}</div>
                     </div>
@@ -839,4 +1214,3 @@ function GroupDetail({
     </div>
   );
 }
-

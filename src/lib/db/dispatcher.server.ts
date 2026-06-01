@@ -29,6 +29,7 @@ import {
 } from "./tools/settlement-tools.server";
 import { listBudgets, upsertBudget, deleteBudget } from "./tools/budgets.server";
 import CATEGORIES from "./categories";
+import { noToolMatch } from "./tools/no_tool_match.server";
 
 // ---------------------------------------------------------------------------
 // Tool metadata (used by the AI to understand available tools)
@@ -441,6 +442,19 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     },
   },
   {
+  name: "no_tool_match",
+  description:
+    "FALLBACK READ-ONLY QUERY TOOL. Use ONLY when no other tool matches, the user wants to VIEW or SEARCH data, and a custom query is needed. DO NOT use if another tool matches or if the user wants to add/update/delete data.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      api_key:    { type: "string" },
+      input_text: { type: "string", description: "The user's natural-language query." },
+    },
+    required: ["api_key", "input_text"],
+  },
+},
+  {
     name: "delete_budget",
     description: "Delete (soft-delete) a budget by its ID.",
     inputSchema: {
@@ -608,6 +622,10 @@ export async function callTool(
       // Categories resource
       case "get_categories":
         return { ok: true, data: CATEGORIES, isError: false };
+      
+      case "no_tool_match":
+        raw = await noToolMatch(apiKey, args.input_text);
+        break;
 
       default:
         return { ok: false, error: `Unknown tool: '${name}'`, isError: true };
