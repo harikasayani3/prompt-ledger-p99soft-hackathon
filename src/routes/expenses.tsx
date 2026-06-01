@@ -312,8 +312,12 @@ function ExpensesPage() {
     onSuccess: () => {
       toast.success("Expense added!");
       setShowAdd(false);
-      qc.invalidateQueries({ queryKey: ["expenses"] });
-      qc.invalidateQueries({ queryKey: ["summary"] });
+      // Invalidate only the queries that changed — expenses list and summary for the current date range
+      qc.invalidateQueries({ queryKey: ["expenses", dateStart, dateEnd, apiKey] });
+      qc.invalidateQueries({ queryKey: ["summary", dateStart, dateEnd, apiKey] });
+      // Also refresh dashboard recent-expenses and sidebar spend
+      qc.invalidateQueries({ queryKey: ["recent-expenses"] });
+      qc.invalidateQueries({ queryKey: ["sidebar-spend"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
@@ -652,6 +656,8 @@ function ExpenseRow({ row, apiKey, userName }: {
       setEditing(false);
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
+      qc.invalidateQueries({ queryKey: ["recent-expenses"] });
+      qc.invalidateQueries({ queryKey: ["sidebar-spend"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Update failed"),
   });
@@ -668,6 +674,8 @@ function ExpenseRow({ row, apiKey, userName }: {
       setConfirming(false);
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
+      qc.invalidateQueries({ queryKey: ["recent-expenses"] });
+      qc.invalidateQueries({ queryKey: ["sidebar-spend"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Delete failed"),
   });

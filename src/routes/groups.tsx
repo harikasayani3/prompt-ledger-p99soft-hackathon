@@ -806,8 +806,10 @@ function GroupsPage() {
           onSuccess={() => {
             qc.invalidateQueries({ queryKey: ["group-tx"] });
             qc.invalidateQueries({ queryKey: ["group-summary"] });
+            qc.invalidateQueries({ queryKey: ["group-balances"] });
             qc.invalidateQueries({ queryKey: ["pending"] });
             qc.invalidateQueries({ queryKey: ["approvals-count"] });
+            qc.invalidateQueries({ queryKey: ["approvals-list"] });
           }}
         />
       )}
