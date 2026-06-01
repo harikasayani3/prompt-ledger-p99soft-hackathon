@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell, Home, Sparkles, Users, Receipt, ClipboardCheck,
-  FileText, Settings, Moon, Sun, LogOut, PiggyBank, Wrench,
+  FileText, Settings, Moon, Sun, LogOut, PiggyBank, Wrench, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { clearLocalUser, getLocalUser, type LocalUser } from "@/lib/api-key";
@@ -40,6 +40,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Track whether the approvals query has ever succeeded so we don't
   // show the banner on the very first attempt (which may fail transiently).
   const approvalsLoadedOnce = useRef(false);
+  const bellRef = useRef<HTMLDivElement>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     const u = getLocalUser();
@@ -70,6 +72,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle("dark", dark);
     localStorage.setItem("theme", dark ? "dark" : "light");
   }, [dark]);
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    }
+    if (showNotifications) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showNotifications]);
 
   const callTool = useServerFn(mcpCall);
 
@@ -113,6 +128,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       // list_my_pending_approvals returns a plain array of transaction rows
       const list = Array.isArray(data) ? data : [];
       return list.length;
+    },
+  });
+
+  // Full pending approvals list — used to populate the notification dropdown
+  const notificationsQ = useQuery({
+    queryKey: ["approvals-list", user?.apiKey],
+    enabled: !!user?.apiKey,
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = await callTool({ data: { apiKey: user!.apiKey, name: "list_my_pending_approvals", args: {} } }) as any;
+      if (!r.ok) return [];
+      const data = r.data as unknown;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (Array.isArray(data) ? data : []) as any[];
     },
   });
 
@@ -266,15 +296,109 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-10 backdrop-blur bg-background/70 border-b border-border px-6 py-3 flex items-center gap-3">
           <div className="md:hidden font-bold"><span className="text-foreground">Prompt</span><span className="text-primary">Ledger</span></div>
           <div className="flex-1" />
-          <button
-            className="relative size-9 rounded-full bg-secondary grid place-items-center hover:bg-accent transition"
-            title="Notifications"
-          >
-            <Bell className="size-4" />
-            {(approvals.data ?? 0) > 0 && (
-              <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary" />
+          {/* Notification bell with dropdown */}
+          <div ref={bellRef} className="relative">
+            <button
+              onClick={() => setShowNotifications((v) => !v)}
+              className="relative size-9 rounded-full bg-secondary grid place-items-center hover:bg-accent transition"
+              title="Notifications"
+            >
+              <Bell className="size-4" />
+              {(approvals.data ?? 0) > 0 && (
+                <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary" />
+              )}
+            </button>
+
+            {showNotifications && (
+              <div className="absolute right-0 top-11 z-50 w-80 glass rounded-2xl border border-border shadow-2xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                  <div className="font-semibold text-sm">Notifications</div>
+                  <div className="flex items-center gap-2">
+                    {(approvals.data ?? 0) > 0 && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                        {approvals.data} new
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setShowNotifications(false)}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="max-h-80 overflow-y-auto chat-scroll">
+                  {notificationsQ.isLoading && (
+                    <div className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</div>
+                  )}
+                  {!notificationsQ.isLoading && (notificationsQ.data ?? []).length === 0 && (
+                    <div className="px-4 py-8 text-center">
+                      <Bell className="size-8 mx-auto mb-2 text-muted-foreground/40" />
+                      <div className="text-sm text-muted-foreground">No new notifications</div>
+                    </div>
+                  )}
+                  {(notificationsQ.data ?? []).map((item: any, i: number) => {
+                    const cat = String(item.category ?? "Expense");
+                    const note = item.note || cat;
+                    const group = item.group_name ?? item.group_id ?? "";
+                    const amt = Number(item.amount ?? 0);
+                    const when = item.created_at ?? item.expense_date ?? "";
+                    const timeAgo = (() => {
+                      if (!when) return "";
+                      const s = Math.max(1, Math.floor((Date.now() - new Date(when).getTime()) / 1000));
+                      if (s < 60) return `${s}s ago`;
+                      const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+                      const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+                      return `${Math.floor(h / 24)}d ago`;
+                    })();
+                    return (
+                      <div
+                        key={item.id ?? i}
+                        className="flex items-start gap-3 px-4 py-3 hover:bg-accent/30 transition-colors border-b border-border/50 last:border-0"
+                      >
+                        <div className="size-8 rounded-lg bg-primary/15 grid place-items-center text-primary text-xs font-bold shrink-0 mt-0.5">
+                          {cat.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold text-foreground truncate">
+                            Approval needed · {cat}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            {note}{group ? ` · ${group}` : ""}
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-[11px] font-semibold text-primary">
+                              ₹{amt.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                            </span>
+                            {timeAgo && (
+                              <span className="text-[10px] text-muted-foreground">{timeAgo}</span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="size-2 rounded-full bg-primary shrink-0 mt-1.5" title="Unread" />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Footer */}
+                {(notificationsQ.data ?? []).length > 0 && (
+                  <div className="px-4 py-2.5 border-t border-border">
+                    <Link
+                      to="/approvals"
+                      onClick={() => setShowNotifications(false)}
+                      className="text-xs text-primary hover:underline w-full text-center block"
+                    >
+                      View all in Approvals →
+                    </Link>
+                  </div>
+                )}
+              </div>
             )}
-          </button>
+          </div>
           <button
             onClick={() => setDark(!dark)}
             className="size-9 rounded-full bg-secondary grid place-items-center hover:bg-accent transition"
