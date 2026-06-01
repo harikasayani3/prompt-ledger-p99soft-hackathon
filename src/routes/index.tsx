@@ -97,7 +97,13 @@ function DashboardInner() {
     queryFn: async () => {
       const r = await callTool({ data: { apiKey: apiKey!, name: "list_expenses", args: { start_date: monthStart, end_date: monthEnd } } });
       if (!r.ok) throw new Error(r.error);
-      return toArray(r.data).slice(0, 6);
+      return toArray(r.data)
+        .sort((a, b) => {
+          const ta = new Date(a.created_at ?? a.date ?? a.expense_date ?? 0).getTime();
+          const tb = new Date(b.created_at ?? b.date ?? b.expense_date ?? 0).getTime();
+          return tb - ta; // newest first
+        })
+        .slice(0, 6);
     },
   });
 
