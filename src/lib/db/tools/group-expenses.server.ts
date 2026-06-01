@@ -131,15 +131,34 @@ export async function listMyPendingApprovals(apiKey: string): Promise<Record<str
   try {
     const ac = await getClientForApiKey(apiKey);
     const uid = jwtSubject(ac.accessToken);
-    const { data, error } = await ac.client.rpc("fn_get_pending_count", { p_user_id: uid });
-    if (error) return { result: toolError(`list_my_pending_approvals: ${error.message}`) };
 
-    const rows = Array.isArray(data) ? data : [];
-    const row = rows[0] as { count?: number; sample?: unknown[] } | undefined;
-    return withPendingHint(
-      { count: row?.count ?? 0, items: row?.sample ?? [] },
-      ac,
-    );
+    // Step 1: find all groups the user belongs to
+    const { data: memberships, error: memErr } = await ac.client
+      .from("group_members")
+      .select("group_id")
+      .eq("user_id", uid);
+
+    if (memErr) return { result: toolError(`list_my_pending_approvals: ${memErr.message}`) };
+
+    const groupIds = (memberships ?? []).map((m) => m.group_id as string);
+
+    if (groupIds.length === 0) {
+      return withPendingHint([], ac);
+    }
+
+    // Step 2: fetch all pending transactions across those groups
+    // Exclude expenses submitted by the current user (they can't approve their own)
+    const { data: pending, error: txErr } = await ac.client
+      .from("transactions")
+      .select("id,submitted_by,payer_id,group_id,expense_date,amount,category,subcategory,note,status,created_at")
+      .in("group_id", groupIds)
+      .eq("status", "pending")
+      .neq("submitted_by", uid)
+      .order("created_at", { ascending: false });
+
+    if (txErr) return { result: toolError(`list_my_pending_approvals: ${txErr.message}`) };
+
+    return withPendingHint(pending ?? [], ac);
   } catch (e) {
     return { result: toolError(`list_my_pending_approvals: ${String(e)}`) };
   }
